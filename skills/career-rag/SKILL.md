@@ -117,6 +117,17 @@ Minimal example:
 - Translate the question into an English `query_en`. For a technology, search its name ("Terraform").
   For a concept, use descriptive English ("experience designing asynchronous backend systems").
 - Use filters when useful: `entity_types`, `required_skills`, `company_ids`, `date_from/date_to`, `project_kinds`.
+- **Technology questions ("what experience do I have with X"): always run a second search with
+  `required_skills`** set to every stored skill name for that technology (check `get_profile_overview`
+  for variants, e.g. "netcode" → `["Unity Netcode", "Netcode for GameObjects"]`). A plain text query is
+  not enough: exact skill matching only fires when the query equals the skill name, and a project whose
+  text is about something else (where the tech is only in its skill list) ranks low and falls below
+  `limit`, behind unrelated semantic hits. Lesson learned: "netcode" without the filter missed
+  TV3 — ISE, which was tagged Unity Netcode.
+- Before saying "there's no evidence of X", confirm with the `required_skills` filter.
+- Skill `aliases` make a plain query hit the exact skill match (e.g. "Netcode"/"NGO" on both Unity
+  Netcode skills). When a short or common name misses a skill, propose adding it as an alias
+  (`op:"update", type:"skill"`, same draft → confirm → commit flow).
 - Open the best hits with `get_entity` before writing CVs or answers that need detail.
 - Empty or weak results mean there's no stored evidence: say so; don't fill gaps with invention.
 
