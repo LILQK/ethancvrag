@@ -1,0 +1,5 @@
+supabase/.temp/
+.netlify/
+consent-site/.netlify/
+.claude/
+.DS_Store

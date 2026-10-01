@@ -1,0 +1,21 @@
+# Hosted-only project config (no local stack). Only declared keys are pushed.
+project_id = "ethancvrag"
+
+[auth]
+site_url = "https://ethancv-career-rag-auth.netlify.app"
+additional_redirect_urls = []
+# Private system: no self sign-up. The single owner account is created from the dashboard.
+enable_signup = false
+
+[auth.email]
+# Email/password provider must stay enabled for the owner's login; global enable_signup=false blocks new accounts.
+enable_signup = true
+
+[auth.oauth_server]
+enabled = true
+# Static login/consent page hosted on Netlify (consent-site/)
+authorization_url_path = "/oauth-consent"
+allow_dynamic_registration = true
+
+[functions.mcp]
+verify_jwt = false

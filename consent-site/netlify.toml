@@ -1,0 +1,14 @@
+# Static OAuth login/consent page for the Career RAG (Supabase Auth OAuth 2.1 server).
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; connect-src https://bcsdgszzdiyibrfzogid.supabase.co; form-action 'none'; frame-ancestors 'none'; base-uri 'none'"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "no-referrer"
+    X-Content-Type-Options = "nosniff"
+    Cache-Control = "no-store"
+
+[[redirects]]
+  from = "/oauth-consent"
+  to = "/index.html"
+  status = 200
