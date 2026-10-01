@@ -62,6 +62,7 @@ erDiagram
   ROLE ||--o{ EVIDENCE : "role-level"
   EDUCATION ||--o{ EVIDENCE : "e.g. thesis"
   EVIDENCE }o--o{ SKILL : demonstrates
+  PROJECT ||--o{ ASSET : "links (or evidence/role/company/education/profile)"
   PROJECT }o--o{ SKILL : uses
   EDUCATION }o--o{ SKILL : teaches
   INGESTION_DRAFT ||--o{ EVIDENCE : "provenance (draft_id)"
@@ -73,6 +74,7 @@ erDiagram
 | `evidence` | One concrete thing done/achieved. `statement_en`, `impact_en`, `metrics`, `certainty` (explicit / inferred) + `inference_note`, `source_text`. |
 | `skills` | Technologies, practices, capabilities, domains, languages. De-duplicated by normalized name (`Fast API` = `FastAPI`), with aliases. |
 | `evidence_skills`, `project_skills`, `education_skills` | Links, each with its own `certainty`. |
+| `assets` | Links (repo, demo, talk, article, video, certificate…) with an English `description_en`, attached to at most one company / role / project / evidence / education, or to the profile. |
 | `ingestion_drafts` | Pending / committed / discarded change sets with the user's original message. |
 | `knowledge_chunks` | **Derived** search index (text, `tsvector`, `vector(384)`, denormalized filters). Rebuildable at any time. |
 
@@ -84,6 +86,13 @@ erDiagram
 - `source_text` — what the user **actually said**, verbatim, in their language. Never translated, never dropped.
 
 Inferences are stored as `certainty: "inferred"` with an explanation; they are never silently turned into facts.
+
+### Links (assets)
+
+URLs are first-class: each link gets its own search chunk built from its title, kind, English description,
+source domain and the context of what it's attached to, and parents list their links in their own chunk. Search
+"talk about event sourcing" and the YouTube link comes back with its project. Since embeddings are text-only,
+the description (written by the client, which can see images / summarize videos) is what makes media findable.
 
 ## Retrieval
 
@@ -108,9 +117,9 @@ judgment: the client is told to read the evidence and to report gaps honestly.
 |---|---|
 | `get_profile_overview` | Career skeleton with ids: companies → roles → projects, personal projects, education, skills, pending drafts. |
 | `search_career` | Hybrid search with filters. Query must be English. |
-| `get_entity` | Full context of a project (company, role, every evidence with provenance, skills, siblings) or of a role, company, evidence, education or skill. |
+| `get_entity` | Full context of a project (company, role, every evidence with provenance, skills, links, siblings) or of a role, company, evidence, education, asset or skill. |
 | `match_job_requirements` | Evidence per job requirement + coverage signal. |
-| `prepare_changes` | **Step 1** of every write: validates a list of `create / update / delete / unlink_skill` operations (with `ref`s linking new items), checks ids exist, flags duplicates, non-English text and missing provenance, and stores a **pending draft** with a human-readable preview. |
+| `prepare_changes` | **Step 1** of every write: validates a list of `create / update / delete / unlink_skill` operations on companies, roles, projects, evidence, education, skills and assets (links) (with `ref`s linking new items), checks ids exist, flags duplicates, non-English text and missing provenance, and stores a **pending draft** with a human-readable preview. |
 | `commit_draft` | **Step 2**: `commit` (atomic, all-or-nothing, then re-index) / `discard` / `show`. Clients are instructed to commit only after explicit user confirmation. |
 | `reindex` | Rebuild chunks from the source-of-truth tables and embed pending ones in batches. |
 
@@ -200,6 +209,7 @@ Notes:
 
 ## Limitations
 
+- **Links only** for media: files (images, PDFs, videos) are not uploaded yet — store them somewhere and link them.
 - **English-only embeddings** (`gte-small`): the client must translate semantic text and queries. Original text is kept.
 - **Edge worker limits**: ~10 embeddings per request. Commits embed up to 8 chunks; larger imports finish with
   repeated `reindex` calls (clients are told to do so).

@@ -18,6 +18,7 @@ Company ──< Role ──< Project ──< Evidence >── Skill
                  └──< Evidence (role-level, e.g. mentoring)
 Project (kind=personal|open_source, no company/role)
 Education (degree|certification|course|bootcamp) ──< Evidence
+Asset (link) ── attached to ONE of company / role / project / evidence / education, or none (profile-level)
 ```
 
 | Entity | What it is | Key fields |
@@ -28,6 +29,7 @@ Education (degree|certification|course|bootcamp) ──< Evidence
 | **evidence** | ONE concrete thing the user did/achieved/designed/implemented/led | statement_en (required), kind, impact_en, metrics, certainty, inference_note, source_text |
 | education | Degree / certification / course | title, kind, institution, field, dates |
 | skill | Technology, practice, capability, domain or spoken language | name, category, aliases |
+| asset | A link: repo, demo, talk, article, video, certificate… | url, title (required), kind, description_en, published_on, source_text |
 
 - **Projects and evidence are the retrieval units**, not jobs. The user's experience is multidisciplinary:
   capture architecture, leadership, business, mentoring, etc. as evidence too.
@@ -102,13 +104,27 @@ Minimal example:
  ]}
 ```
 
+## Workflow: links (assets)
+
+- `{"op":"create","type":"asset","data":{"project":{"id":"<uuid>"},"kind":"talk","title":"…","url":"https://…",
+  "description_en":"…","published_on":"2023-05","source_text":"…"}}`
+- kind: `repo | demo | website | article | talk | video | image | document | certificate | publication | link | other`.
+- Attach to the most specific item it supports: evidence > project > role/education > company. No parent =
+  profile-level link (GitHub profile, portfolio, LinkedIn).
+- **description_en is what makes a link findable** (embeddings are text-only): say in English what it shows
+  and why it matters. For a video or image the user shares, describe its content; for a repo, what it does and
+  its stack. Keep the link's own skills on the evidence/project it is attached to.
+- Only store URLs the user actually gave you; never guess or "fix" URLs. Links are returned in every
+  `get_entity` result under `links`, and assets also appear in `search_career` (entity_type `asset`).
+- When writing CVs / answers, cite the relevant links as supporting material.
+
 ## Workflow: corrections and deletions
 
 - Find the target with `search_career` / `get_entity` to get its id.
 - `{"op":"update","type":"evidence","id":"<uuid>","data":{...only changed fields...}}`.
   On update, `skills` **replaces** the set unless `"replace_skills": false`.
 - `{"op":"unlink_skill","type":"evidence","id":"<uuid>","data":{"skill":"Kafka"}}`.
-- `{"op":"delete","type":"project","id":"<uuid>"}`: deleting a project deletes its evidence; deleting a
+- `{"op":"delete","type":"project","id":"<uuid>"}`: deleting a project deletes its evidence and links; deleting a
   role deletes its role-level evidence. Always explain this in the preview.
 - Same draft → confirm → commit flow.
 

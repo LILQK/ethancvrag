@@ -6,16 +6,18 @@ import { embed, embedPending, looksNonEnglish, toolError, toolResult } from "./l
 // ---------------------------------------------------------------------------
 // Shared vocabulary
 // ---------------------------------------------------------------------------
-const ENTITY_TYPES = ["company", "role", "project", "evidence", "education"] as const;
-const WRITE_TYPES = ["company", "role", "project", "education", "evidence", "skill"] as const;
+const ENTITY_TYPES = ["company", "role", "project", "evidence", "education", "asset"] as const;
+const WRITE_TYPES = ["company", "role", "project", "education", "evidence", "skill", "asset"] as const;
 const TABLE: Record<string, string> = {
   company: "companies", role: "roles", project: "projects", education: "education", evidence: "evidence", skill: "skills",
+  asset: "assets",
 };
 const DATE = z.string().regex(/^\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?$/, "Use YYYY, YYYY-MM or YYYY-MM-DD");
 const UUID = z.string().uuid();
 
 const SERVER_INSTRUCTIONS = `Career RAG: the user's private professional memory (companies, roles, projects, evidence, education, skills).
 Projects and EVIDENCE (concrete things the user did, achieved, designed, implemented or led) are the main retrieval units.
+LINKS (assets: repos, demos, talks, articles, videos, certificates…) can be attached to any company/role/project/evidence/education.
 
 Rules for every client:
 1. SEARCH BEFORE ASSUMING. Call get_profile_overview or search_career before saying something does or does not exist, and before creating companies/roles/projects that may already exist.
@@ -48,15 +50,16 @@ const SkillInput = z.union([
 const EntityData = z.object({
   // identity / text
   name: z.string().min(1).max(300).optional().describe("company | project | skill: name"),
-  title: z.string().min(1).max(300).optional().describe("role: job title (e.g. 'Senior Backend Consultant'); education: degree/certification title"),
+  title: z.string().min(1).max(300).optional().describe("role: job title (e.g. 'Senior Backend Consultant'); education: degree/certification title; asset (required): link title"),
   kind: z.string().optional().describe(
     "project: work|personal|open_source|freelance|academic|other. education: degree|certification|course|bootcamp|other. " +
-    "evidence: achievement|responsibility|implementation|design|leadership|mentoring|business|research|communication|other"),
+    "evidence: achievement|responsibility|implementation|design|leadership|mentoring|business|research|communication|other. " +
+    "asset: repo|demo|website|article|talk|video|image|document|certificate|publication|link|other"),
   category: z.enum(["technology", "practice", "capability", "domain", "language", "other"]).optional().describe("skill only"),
   aliases: z.array(z.string().max(120)).max(10).optional().describe("skill only"),
   // English semantic fields
   summary_en: z.string().max(4000).optional().describe("ENGLISH. role: short summary; project (required on create): what the project was, its goal and context"),
-  description_en: z.string().max(8000).optional().describe("ENGLISH. company/project/education/skill: longer description"),
+  description_en: z.string().max(8000).optional().describe("ENGLISH. company/project/education/skill: longer description. asset: what the link shows/contains and why it matters (this is what makes the link searchable: for a video or image, describe its content)"),
   my_role_en: z.string().max(2000).optional().describe("ENGLISH. project: what the user personally did/was responsible for"),
   statement_en: z.string().min(3).max(4000).optional().describe(
     "ENGLISH. evidence (required): ONE concrete, self-contained statement of what the user did, written for semantic search, " +
@@ -76,16 +79,18 @@ const EntityData = z.object({
   institution: z.string().max(300).optional().describe("education"),
   field: z.string().max(300).optional().describe("education: field of study"),
   credential_url: z.string().max(500).optional().describe("education"),
-  url: z.string().max(500).optional().describe("project"),
+  url: z.string().max(2000).optional().describe("project: main URL. asset (required): http(s) URL of the link"),
+  published_on: DATE.nullable().optional().describe("asset: publication/recording date"),
   team_size: z.number().int().min(1).max(100000).optional().describe("project"),
   start_date: DATE.nullable().optional().describe("YYYY | YYYY-MM | YYYY-MM-DD"),
   end_date: DATE.nullable().optional().describe("YYYY | YYYY-MM | YYYY-MM-DD; omit/null if ongoing"),
   is_current: z.boolean().optional().describe("role | project: still ongoing"),
   // relationships
-  company: Link.nullable().optional().describe("role | project: company"),
-  role: Link.nullable().optional().describe("project | evidence: role (job) it belongs to"),
-  project: Link.nullable().optional().describe("evidence: project it belongs to (preferred anchor for evidence)"),
-  education: Link.nullable().optional().describe("evidence: education item it belongs to (e.g. thesis work)"),
+  company: Link.nullable().optional().describe("role | project | asset: company"),
+  role: Link.nullable().optional().describe("project | evidence | asset: role (job) it belongs to"),
+  project: Link.nullable().optional().describe("evidence | asset: project it belongs to (preferred anchor for evidence)"),
+  education: Link.nullable().optional().describe("evidence | asset: education item it belongs to (e.g. thesis work)"),
+  evidence: Link.nullable().optional().describe("asset only: evidence the link supports"),
   skills: z.array(SkillInput).max(40).optional().describe(
     "evidence | project | education: skills/technologies/capabilities demonstrated. On update, the list REPLACES existing links unless replace_skills=false"),
   skill: z.string().max(120).optional().describe("unlink_skill only: skill name to unlink"),
@@ -102,6 +107,7 @@ const Operation = z.object({
 
 const REQUIRED_ON_CREATE: Record<string, string[]> = {
   company: ["name"], role: ["title"], project: ["name", "summary_en"], education: ["title"], evidence: ["statement_en"], skill: ["name"],
+  asset: ["url", "title"],
 };
 const ALLOWED_FIELDS: Record<string, string[]> = {
   company: ["name", "industry", "location", "website", "description_en", "source_text"],
@@ -110,13 +116,15 @@ const ALLOWED_FIELDS: Record<string, string[]> = {
   education: ["kind", "title", "institution", "field", "start_date", "end_date", "credential_url", "description_en", "source_text", "skills"],
   evidence: ["kind", "statement_en", "impact_en", "metrics", "certainty", "inference_note", "source_text", "start_date", "end_date", "project", "role", "education", "skills"],
   skill: ["name", "category", "aliases", "description_en"],
+  asset: ["kind", "url", "title", "description_en", "source_text", "published_on", "company", "role", "project", "evidence", "education"],
 };
 const KINDS: Record<string, string[]> = {
   project: ["work", "personal", "open_source", "freelance", "academic", "other"],
   education: ["degree", "certification", "course", "bootcamp", "other"],
   evidence: ["achievement", "responsibility", "implementation", "design", "leadership", "mentoring", "business", "research", "communication", "other"],
+  asset: ["repo", "demo", "website", "article", "talk", "video", "image", "document", "certificate", "publication", "link", "other"],
 };
-const LINK_TYPES: Record<string, string> = { company: "company", role: "role", project: "project", education: "education" };
+const LINK_TYPES: Record<string, string> = { company: "company", role: "role", project: "project", education: "education", evidence: "evidence" };
 const EN_FIELDS = ["summary_en", "description_en", "my_role_en", "statement_en", "impact_en"];
 
 type Op = z.infer<typeof Operation>;
@@ -166,7 +174,7 @@ export function buildServer(db: SupabaseClient) {
       "Hybrid search over the user's career: semantic vector search (gte-small) + full-text search + exact skill/technology matching, " +
       "fused with reciprocal rank fusion, plus structured filters. Works for concepts ('experience designing asynchronous backend systems') " +
       "and exact technologies ('Kafka', 'Terraform', 'FastAPI'). The query MUST be in English (translate the user's question first). " +
-      "Results are evidence/projects/roles/companies/education chunks with entity ids, scores and signals " +
+      "Results are evidence/projects/roles/companies/education/asset (link) chunks with entity ids, scores and signals " +
       "(semantic_similarity, fts_rank, matched_skills) and certainty (explicit/inferred: never present inferred items as facts). " +
       "Use get_entity with a returned id for full context. An empty result means nothing stored matches: say so, do not invent.",
     inputSchema: {
@@ -206,10 +214,11 @@ export function buildServer(db: SupabaseClient) {
     title: "Get an entity with full context",
     description:
       "Returns one entity with its full context. For a PROJECT: the project, its company, its role, all its evidence (with skills, " +
-      "certainty, source_text provenance), project skills, all skills used and sibling projects. Also supports role, company, evidence, " +
-      "education and skill (skill returns all evidence/projects using it). Use only ids returned by this server.",
+      "certainty, source_text provenance and links), project skills, project links, all skills used and sibling projects. Also supports " +
+      "role, company, evidence, education, asset (link) and skill (skill returns all evidence/projects using it). Every entity includes its " +
+      "attached 'links' (assets with url). Use only ids returned by this server.",
     inputSchema: {
-      entity_type: z.enum(["project", "role", "company", "evidence", "education", "skill"]),
+      entity_type: z.enum(["project", "role", "company", "evidence", "education", "skill", "asset"]),
       id: UUID,
     },
     annotations: { readOnlyHint: true },
@@ -252,7 +261,7 @@ export function buildServer(db: SupabaseClient) {
     for (const [i, r] of a.requirements.entries()) {
       const q = r.skills?.length ? `${r.requirement_en} (${r.skills.join(", ")})` : r.requirement_en;
       const rows = await hybrid(db, q, {
-        match_count: k, entity_types: ["evidence", "project", "education"], include_inferred: a.include_inferred ?? true,
+        match_count: k, entity_types: ["evidence", "project", "education", "asset"], include_inferred: a.include_inferred ?? true,
       });
       const best = rows[0];
       const bestSim = Math.max(0, ...rows.map((x) => x.semantic_similarity ?? 0));
@@ -295,6 +304,10 @@ export function buildServer(db: SupabaseClient) {
       "Corrections: use op='update' with the entity id and only the fields to change (for evidence, 'skills' replaces the skill set unless " +
       "replace_skills=false), op='delete' to remove (deleting a project deletes its evidence; deleting a role deletes its role-level evidence), " +
       "op='unlink_skill' with data.skill to drop one skill. Companies and skills are de-duplicated by normalized name automatically.\n" +
+      "LINKS: type='asset' stores a URL (repo, demo, talk, article, video, certificate…) with title, kind and an ENGLISH description_en " +
+      "of what it shows (that text is what makes it searchable; for videos/images describe the content). Attach it to at most one of " +
+      "company/role/project/evidence/education (none = profile-level link, e.g. GitHub profile). Never invent or guess URLs: only store " +
+      "URLs the user gave you.\n" +
       "Returns draft_id, a human-readable preview, and warnings (possible duplicates, non-English text, missing provenance). Show the preview " +
       "and warnings to the user and ask for confirmation; fix issues by preparing a new draft (and discarding the old one).\n" +
       'Example: {"source_text":"En Acme fui consultor y diseñé un backend asíncrono con Kafka","source_language":"es","operations":[' +
@@ -452,7 +465,7 @@ async function prepareDraft(db: SupabaseClient, a: { source_text: string; source
       errors.push(`${at}: kind must be one of ${KINDS[o.type].join("|")}`);
     }
     if (d.kind != null && !KINDS[o.type]) errors.push(`${at}: 'kind' is not valid for ${o.type}`);
-    for (const lk of ["company", "role", "project", "education"]) {
+    for (const lk of ["company", "role", "project", "education", "evidence"]) {
       const link = d[lk] as { id?: string; ref?: string } | null | undefined;
       if (!link) continue;
       if (!!link.id === !!link.ref) { errors.push(`${at}: ${lk} link needs exactly one of id or ref`); continue; }
@@ -460,6 +473,12 @@ async function prepareDraft(db: SupabaseClient, a: { source_text: string; source
         if (!refs.has(link.ref)) errors.push(`${at}: ${lk}.ref '${link.ref}' is not created earlier in this draft`);
         else if (refs.get(link.ref) !== LINK_TYPES[lk]) errors.push(`${at}: ${lk}.ref '${link.ref}' is a ${refs.get(link.ref)}`);
       } else if (link.id) need(LINK_TYPES[lk], link.id);
+    }
+    if (o.type === "asset") {
+      if (d.url != null && !/^https?:\/\/\S+$/i.test(String(d.url))) errors.push(`${at}: url must be an absolute http(s) URL`);
+      const parents = ["company", "role", "project", "evidence", "education"].filter((k) => d[k]);
+      if (parents.length > 1) errors.push(`${at}: an asset can be attached to only ONE of company/role/project/evidence/education`);
+      if (o.op === "create" && !d.description_en) warnings.push(`${at}: link without description_en will be hard to find; describe what it shows in English`);
     }
     if (o.type === "evidence" && o.op === "create") {
       if (!d.project && !d.role && !d.education) warnings.push(`${at}: evidence is not linked to any project, role or education`);
@@ -513,6 +532,13 @@ async function prepareDraft(db: SupabaseClient, a: { source_text: string; source
       if (hit && cid) warnings.push(`role "${d.title}" already exists at that company (id ${hit.id}). Link to it if it is the same job.`);
     }
   }
+  const urls = createdNames("asset", "url");
+  if (urls.length) {
+    const { data } = await db.from("assets").select("id, url, title").in("url", urls);
+    for (const a of (data ?? []) as { id: string; url: string; title: string }[]) {
+      warnings.push(`link ${a.url} is already stored as "${a.title}" (id ${a.id}). Update it instead of adding a duplicate.`);
+    }
+  }
   const evid = ops.filter((o) => o.op === "create" && o.type === "evidence").slice(0, 15);
   for (const o of evid) {
     const st = String((o.data as Record<string, unknown>).statement_en);
@@ -525,7 +551,7 @@ async function prepareDraft(db: SupabaseClient, a: { source_text: string; source
   // Human-readable preview
   for (const o of ops) {
     const d = (o.data ?? {}) as Record<string, unknown>;
-    const label = d.name ?? d.title ?? d.statement_en ?? "";
+    const label = o.type === "asset" && o.op === "create" ? `${d.title} <${d.url}>` : d.name ?? d.title ?? d.statement_en ?? "";
     const skills = Array.isArray(d.skills) ? ` [skills: ${(d.skills as { name: string; certainty?: string }[]).map((s) => s.name + (s.certainty === "inferred" ? " (inferred)" : "")).join(", ")}]` : "";
     const cert = d.certainty === "inferred" ? " (INFERRED)" : "";
     const target = o.id ? ` ${o.id}` : o.ref ? ` as ${o.ref}` : "";
