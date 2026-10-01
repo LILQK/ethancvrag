@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="referrer" content="no-referrer" />
+<title>Career RAG Explorer</title>
+<style>
+  :root { color-scheme: light dark;
+    --bg:#f6f7f9; --panel:#fff; --fg:#14171a; --muted:#68707a; --line:#dde1e6; --accent:#1f6feb; --soft:#eef2f7;
+    --c-company:#8250df; --c-role:#bf8700; --c-project:#1f6feb; --c-evidence:#1a7f37; --c-education:#cf222e; --c-asset:#0e8a94; --c-skill:#6e7781; }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg:#0d1117; --panel:#161b22; --fg:#e6edf3; --muted:#8b949e; --line:#30363d; --accent:#4493f8; --soft:#1c2330;
+    --c-company:#a371f7; --c-role:#d29922; --c-project:#4493f8; --c-evidence:#3fb950; --c-education:#f85149; --c-asset:#39c5cf; --c-skill:#8b949e; } }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui, -apple-system, sans-serif; background:var(--bg); color:var(--fg); }
+  header { display:flex; align-items:center; gap:16px; padding:10px 16px; border-bottom:1px solid var(--line); background:var(--panel); position:sticky; top:0; z-index:5; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; }
+  nav { display:flex; gap:4px; flex-wrap:wrap; }
+  nav button { border:1px solid transparent; background:none; color:var(--muted); padding:6px 10px; border-radius:6px; cursor:pointer; font:inherit; }
+  nav button.on { color:var(--fg); background:var(--soft); border-color:var(--line); }
+  .stats { margin-left:auto; color:var(--muted); font-size:12px; }
+  main { display:grid; grid-template-columns: 1fr 380px; height: calc(100vh - 53px); }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; height:auto; } #detail { border-left:none; border-top:1px solid var(--line); } }
+  #view { overflow:auto; position:relative; min-height:60vh; }
+  #detail { border-left:1px solid var(--line); background:var(--panel); overflow:auto; padding:16px; }
+  #detail h2 { font-size:15px; margin:0 0 4px; }
+  .tag { display:inline-block; font-size:11px; padding:1px 7px; border-radius:10px; background:var(--soft); border:1px solid var(--line); margin:2px 3px 2px 0; }
+  .tag.inf { border-style:dashed; color:var(--muted); }
+  .muted { color:var(--muted); }
+  .src { font-style:italic; color:var(--muted); border-left:3px solid var(--line); padding-left:8px; margin:6px 0; white-space:pre-wrap; }
+  .card { border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin:8px 0; background:var(--panel); cursor:pointer; }
+  .card:hover { border-color:var(--accent); }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+  .hidden { display:none !important; }
+  .pad { padding:16px; }
+  .legend { display:flex; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--muted); padding:8px 16px; }
+  .toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:10px 16px; border-bottom:1px solid var(--line); background:var(--panel); position:sticky; top:0; z-index:2; }
+  input[type=search], input[type=email], input[type=password], select { padding:7px 9px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:inherit; font:inherit; }
+  button.btn { padding:7px 12px; border-radius:6px; border:1px solid var(--line); background:var(--panel); color:inherit; cursor:pointer; font:inherit; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  #cy { position:absolute; inset:49px 0 0 0; }
+  svg text { fill: var(--fg); }
+  .tl-label { font-size:12px; }
+  .bar { cursor:pointer; }
+  .bar:hover { opacity:.8; }
+  .skillrow { display:grid; grid-template-columns: 200px 1fr 40px; gap:8px; align-items:center; padding:3px 0; cursor:pointer; }
+  .skillrow:hover .nm { color:var(--accent); }
+  .meter { height:10px; background:var(--soft); border-radius:5px; overflow:hidden; display:flex; }
+  .meter i { display:block; height:100%; }
+  .err { color:#d1242f; }
+  #login { max-width:360px; margin:12vh auto; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:24px; }
+  #login label { display:block; margin:10px 0 4px; font-size:13px; }
+  #login input { width:100%; }
+  .tip { position:fixed; pointer-events:none; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:12px; max-width:320px; z-index:20; box-shadow:0 4px 16px rgba(0,0,0,.15); }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<section id="login" class="hidden">
+  <h1 style="font-size:18px;margin:0 0 6px">Career RAG Explorer</h1>
+  <p class="muted" style="margin:0 0 8px">Private. Sign in with the owner account.</p>
+  <form id="loginform">
+    <label for="email">Email</label><input id="email" type="email" autocomplete="username" required />
+    <label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required />
+    <div style="margin-top:14px"><button class="btn primary" type="submit">Sign in</button></div>
+    <p class="err" id="loginerr"></p>
+  </form>
+</section>
+
+<div id="app" class="hidden">
+  <header>
+    <h1>Career RAG</h1>
+    <nav id="tabs">
+      <button data-v="timeline" class="on">Timeline</button>
+      <button data-v="graph">Graph</button>
+      <button data-v="skills">Skills</button>
+      <button data-v="search">Search</button>
+      <button data-v="map">Embedding map</button>
+    </nav>
+    <span class="stats" id="stats"></span>
+    <button class="btn" id="signout">Sign out</button>
+  </header>
+  <main>
+    <section id="view"></section>
+    <aside id="detail"><p class="muted">Click any item to see its details, original wording (source_text), skills and links.</p></aside>
+  </main>
+</div>
+<div class="tip hidden" id="tip"></div>
+
+<script type="module">
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+
+const SUPABASE_URL = "https://bcsdgszzdiyibrfzogid.supabase.co";
+const supabase = createClient(SUPABASE_URL, "sb_publishable_-Yv_wGOJABUoCMZQGY-Y4A_3XhYRPwx");
+const MCP_URL = SUPABASE_URL + "/functions/v1/mcp";
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const COLORS = () => ({ company: css("--c-company"), role: css("--c-role"), project: css("--c-project"), evidence: css("--c-evidence"),
+  education: css("--c-education"), asset: css("--c-asset"), skill: css("--c-skill") });
+const tip = $("tip");
+const showTip = (ev, html) => { tip.innerHTML = html; tip.classList.remove("hidden"); tip.style.left = Math.min(ev.clientX + 12, innerWidth - 330) + "px"; tip.style.top = (ev.clientY + 12) + "px"; };
+const hideTip = () => tip.classList.add("hidden");
+
+// ---------------------------------------------------------------------------
+// Data
+// ---------------------------------------------------------------------------
+let D = null;
+async function all(table, cols = "*") {
+  const out = []; let from = 0;
+  for (;;) {
+    const { data, error } = await supabase.from(table).select(cols).range(from, from + 999);
+    if (error) throw new Error(`${table}: ${error.message}`);
+    out.push(...data); if (data.length < 1000) return out; from += 1000;
+  }
+}
+async function load() {
+  const [companies, roles, projects, evidence, education, skills, es, ps, eds, assets] = await Promise.all([
+    all("companies"), all("roles"), all("projects"), all("evidence"), all("education"), all("skills"),
+    all("evidence_skills"), all("project_skills"), all("education_skills"), all("assets")]);
+  const by = (arr) => Object.fromEntries(arr.map((x) => [x.id, x]));
+  D = { companies, roles, projects, evidence, education, skills, es, ps, eds, assets,
+    C: by(companies), R: by(roles), P: by(projects), E: by(evidence), ED: by(education), S: by(skills), A: by(assets) };
+  D.skillsOf = (type, id) => {
+    const links = type === "evidence" ? es.filter((x) => x.evidence_id === id) : type === "project" ? ps.filter((x) => x.project_id === id)
+      : type === "education" ? eds.filter((x) => x.education_id === id) : [];
+    return links.map((l) => ({ ...D.S[l.skill_id], certainty: l.certainty })).filter((s) => s.name).sort((a, b) => a.name.localeCompare(b.name));
+  };
+  D.linksOf = (col, id) => assets.filter((a) => a[col] === id);
+  D.companyOfProject = (p) => D.C[p.company_id] || (D.R[p.role_id] && D.C[D.R[p.role_id].company_id]);
+  $("stats").textContent = `${companies.length} companies · ${roles.length} roles · ${projects.length} projects · ${evidence.length} evidence · ${skills.length} skills · ${assets.length} links`;
+}
+
+// ---------------------------------------------------------------------------
+// Detail panel
+// ---------------------------------------------------------------------------
+function skillTags(list) {
+  return list.map((s) => `<span class="tag ${s.certainty === "inferred" ? "inf" : ""}" title="${esc(s.category)}${s.certainty === "inferred" ? " · inferred" : ""}">${esc(s.name)}</span>`).join("");
+}
+function linksHtml(list) {
+  if (!list.length) return "";
+  return `<h3 style="font-size:13px;margin:14px 0 4px">Links</h3>` + list.map((a) =>
+    `<div style="margin:6px 0"><span class="tag">${esc(a.kind)}</span><a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.title)}</a>
+     ${a.description_en ? `<div class="muted" style="font-size:12px">${esc(a.description_en)}</div>` : ""}</div>`).join("");
+}
+const period = (s, e, cur) => (s || e || cur) ? `${s ?? "?"} – ${cur ? "present" : e ?? "?"}` : "";
+const srcHtml = (t) => t ? `<div class="src" title="Original wording (provenance)">${esc(t)}</div>` : "";
+function evidenceCard(e) {
+  return `<div class="card" data-open="evidence:${e.id}"><span class="tag">${esc(e.kind)}</span>${e.certainty === "inferred" ? '<span class="tag inf">inferred</span>' : ""}
+    <div>${esc(e.statement_en)}</div>${e.impact_en ? `<div class="muted" style="font-size:12px">Impact: ${esc(e.impact_en)}</div>` : ""}
+    <div>${skillTags(D.skillsOf("evidence", e.id))}</div></div>`;
+}
+function open(type, id) {
+  const el = $("detail"); let h = "";
+  const head = (t, title, sub) => `<div class="muted" style="font-size:12px;text-transform:uppercase;letter-spacing:.04em"><span class="dot" style="background:${COLORS()[t]}"></span>${t}</div><h2>${esc(title)}</h2>${sub ? `<div class="muted">${sub}</div>` : ""}`;
+  if (type === "company") {
+    const c = D.C[id]; const roles = D.roles.filter((r) => r.company_id === id);
+    h = head("company", c.name, esc([c.industry, c.location].filter(Boolean).join(" · "))) + (c.description_en ? `<p>${esc(c.description_en)}</p>` : "") + srcHtml(c.source_text)
+      + roles.map((r) => `<div class="card" data-open="role:${r.id}"><b>${esc(r.title)}</b> <span class="muted">${period(r.start_date, r.end_date, r.is_current)}</span></div>`).join("")
+      + linksHtml(D.linksOf("company_id", id));
+  } else if (type === "role") {
+    const r = D.R[id]; const c = D.C[r.company_id]; const projects = D.projects.filter((p) => p.role_id === id);
+    h = head("role", r.title, esc([c?.name, period(r.start_date, r.end_date, r.is_current), r.employment_type?.replace("_", " ")].filter(Boolean).join(" · ")))
+      + (r.summary_en ? `<p>${esc(r.summary_en)}</p>` : "") + srcHtml(r.source_text)
+      + projects.map((p) => `<div class="card" data-open="project:${p.id}"><b>${esc(p.name)}</b> <span class="muted">${period(p.start_date, p.end_date, p.is_current)}</span><div class="muted" style="font-size:12px">${esc(p.summary_en)}</div></div>`).join("")
+      + D.evidence.filter((e) => e.role_id === id && !e.project_id).map(evidenceCard).join("") + linksHtml(D.linksOf("role_id", id));
+  } else if (type === "project") {
+    const p = D.P[id]; const r = D.R[p.role_id]; const c = D.companyOfProject(p);
+    h = head("project", p.name, esc([p.kind, c?.name, r?.title, period(p.start_date, p.end_date, p.is_current), p.team_size ? `team of ${p.team_size}` : ""].filter(Boolean).join(" · ")))
+      + `<p>${esc(p.summary_en)}</p>` + (p.description_en ? `<p class="muted">${esc(p.description_en)}</p>` : "") + (p.my_role_en ? `<p><b>My role:</b> ${esc(p.my_role_en)}</p>` : "")
+      + srcHtml(p.source_text) + `<div>${skillTags(D.skillsOf("project", id))}</div>`
+      + linksHtml(D.linksOf("project_id", id))
+      + `<h3 style="font-size:13px;margin:14px 0 4px">Evidence</h3>` + D.evidence.filter((e) => e.project_id === id).map(evidenceCard).join("");
+  } else if (type === "evidence") {
+    const e = D.E[id]; const p = D.P[e.project_id]; const r = D.R[e.role_id ?? p?.role_id]; const ed = D.ED[e.education_id];
+    h = head("evidence", e.statement_en, esc([e.kind, e.certainty, period(e.start_date, e.end_date)].filter(Boolean).join(" · ")))
+      + (e.impact_en ? `<p><b>Impact:</b> ${esc(e.impact_en)}</p>` : "")
+      + (e.metrics?.length ? `<p>${e.metrics.map((m) => `<span class="tag">${esc(m.name)}: ${esc(m.value)}</span>`).join("")}</p>` : "")
+      + (e.certainty === "inferred" ? `<p class="muted"><b>Inferred:</b> ${esc(e.inference_note ?? "")}</p>` : "")
+      + srcHtml(e.source_text) + `<div>${skillTags(D.skillsOf("evidence", id))}</div>` + linksHtml(D.linksOf("evidence_id", id))
+      + (p ? `<div class="card" data-open="project:${p.id}">Project: <b>${esc(p.name)}</b></div>` : "")
+      + (r ? `<div class="card" data-open="role:${r.id}">Role: <b>${esc(r.title)}</b></div>` : "")
+      + (ed ? `<div class="card" data-open="education:${ed.id}">Education: <b>${esc(ed.title)}</b></div>` : "");
+  } else if (type === "education") {
+    const ed = D.ED[id];
+    h = head("education", ed.title, esc([ed.kind, ed.institution, ed.field, period(ed.start_date, ed.end_date)].filter(Boolean).join(" · ")))
+      + (ed.description_en ? `<p>${esc(ed.description_en)}</p>` : "") + srcHtml(ed.source_text) + `<div>${skillTags(D.skillsOf("education", id))}</div>`
+      + linksHtml(D.linksOf("education_id", id)) + D.evidence.filter((e) => e.education_id === id).map(evidenceCard).join("");
+  } else if (type === "skill") {
+    const s = D.S[id];
+    const ev = D.es.filter((x) => x.skill_id === id).map((x) => D.E[x.evidence_id]).filter(Boolean);
+    const pr = D.ps.filter((x) => x.skill_id === id).map((x) => D.P[x.project_id]).filter(Boolean);
+    h = head("skill", s.name, esc([s.category, s.aliases?.length ? "aka " + s.aliases.join(", ") : ""].filter(Boolean).join(" · ")))
+      + (pr.length ? `<h3 style="font-size:13px;margin:14px 0 4px">Projects</h3>` + pr.map((p) => `<div class="card" data-open="project:${p.id}"><b>${esc(p.name)}</b></div>`).join("") : "")
+      + `<h3 style="font-size:13px;margin:14px 0 4px">Evidence (${ev.length})</h3>` + ev.map(evidenceCard).join("");
+  } else if (type === "asset") {
+    const a = D.A[id];
+    h = head("asset", a.title, esc([a.kind, a.published_on].filter(Boolean).join(" · "))) + `<p><a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.url)}</a></p>`
+      + (a.description_en ? `<p>${esc(a.description_en)}</p>` : "") + srcHtml(a.source_text)
+      + (a.project_id ? `<div class="card" data-open="project:${a.project_id}">Project: <b>${esc(D.P[a.project_id]?.name)}</b></div>` : "")
+      + (a.evidence_id ? `<div class="card" data-open="evidence:${a.evidence_id}">Evidence: ${esc(D.E[a.evidence_id]?.statement_en)}</div>` : "");
+  }
+  el.innerHTML = h; el.scrollTop = 0;
+}
+document.addEventListener("click", (ev) => {
+  const t = ev.target.closest("[data-open]"); if (!t || ev.target.closest("a")) return;
+  const [type, id] = t.dataset.open.split(":"); open(type, id);
+});
+
+// ---------------------------------------------------------------------------
+// Views
+// ---------------------------------------------------------------------------
+const view = $("view");
+const toDate = (d, end) => {
+  if (!d) return null; const [y, m, dd] = d.split("-").map(Number);
+  if (end) return m ? (dd ? new Date(y, m - 1, dd) : new Date(y, m, 0)) : new Date(y, 11, 31);
+  return new Date(y, (m || 1) - 1, dd || 1);
+};
+
+function timeline() {
+  const rows = []; // {label, sub, start, end, color, open, indent}
+  const now = new Date();
+  const span = (s, e, cur) => ({ start: toDate(s), end: cur ? now : toDate(e, true) || toDate(s, true) });
+  const companies = [...D.companies].sort((a, b) => {
+    const sa = Math.min(...D.roles.filter((r) => r.company_id === a.id).map((r) => +toDate(r.start_date) || Infinity));
+    const sb = Math.min(...D.roles.filter((r) => r.company_id === b.id).map((r) => +toDate(r.start_date) || Infinity));
+    return sb - sa;
+  });
+  for (const c of companies) {
+    rows.push({ label: c.name, header: true, color: COLORS().company, open: `company:${c.id}` });
+    for (const r of D.roles.filter((x) => x.company_id === c.id).sort((a, b) => (b.start_date ?? "").localeCompare(a.start_date ?? ""))) {
+      rows.push({ label: r.title, ...span(r.start_date, r.end_date, r.is_current), color: COLORS().role, open: `role:${r.id}`, indent: 1 });
+      for (const p of D.projects.filter((x) => x.role_id === r.id)) {
+        const sp = span(p.start_date ?? r.start_date, p.end_date ?? (p.start_date ? null : r.end_date), p.is_current || (!p.start_date && r.is_current));
+        rows.push({ label: p.name, ...sp, color: COLORS().project, open: `project:${p.id}`, indent: 2, approx: !p.start_date });
+      }
+    }
+    for (const p of D.projects.filter((x) => x.company_id === c.id && !x.role_id))
+      rows.push({ label: p.name, ...span(p.start_date, p.end_date, p.is_current), color: COLORS().project, open: `project:${p.id}`, indent: 2 });
+  }
+  const personal = D.projects.filter((p) => !p.company_id && !p.role_id);
+  if (personal.length) {
+    rows.push({ label: "Personal & other projects", header: true });
+    for (const p of personal.sort((a, b) => (b.start_date ?? "").localeCompare(a.start_date ?? "")))
+      rows.push({ label: p.name, ...span(p.start_date, p.end_date, p.is_current), color: COLORS().project, open: `project:${p.id}`, indent: 1 });
+  }
+  if (D.education.length) {
+    rows.push({ label: "Education & certifications", header: true });
+    for (const e of D.education) rows.push({ label: e.title, ...span(e.start_date, e.end_date), color: COLORS().education, open: `education:${e.id}`, indent: 1 });
+  }
+  const dated = rows.filter((r) => r.start);
+  const min = new Date(Math.min(...dated.map((r) => +r.start))); min.setMonth(0, 1);
+  const max = new Date(Math.max(+now, ...dated.map((r) => +r.end)));
+  const W = Math.max(view.clientWidth, 700), LW = 280, RH = 24, H = rows.length * RH + 40;
+  const x = (d) => LW + ((+d - +min) / (+max - +min)) * (W - LW - 20);
+  let svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">`;
+  for (let y = min.getFullYear(); y <= max.getFullYear(); y++) {
+    const xx = x(new Date(y, 0, 1));
+    svg += `<line x1="${xx}" x2="${xx}" y1="20" y2="${H}" stroke="${css("--line")}" /><text x="${xx + 3}" y="14" font-size="11" fill="${css("--muted")}">${y}</text>`;
+  }
+  rows.forEach((r, i) => {
+    const y = 28 + i * RH;
+    const lbl = r.label.length > 38 ? r.label.slice(0, 37) + "…" : r.label;
+    svg += `<text class="tl-label" x="${8 + (r.indent ?? 0) * 14}" y="${y + 12}" ${r.header ? 'font-weight="600"' : ""} ${r.open ? `data-open="${r.open}" style="cursor:pointer"` : ""}>${esc(lbl)}</text>`;
+    if (r.start) {
+      const x1 = x(r.start), x2 = Math.max(x(r.end), x1 + 4);
+      svg += `<rect class="bar" data-open="${r.open}" data-tip="${esc(r.label)} · ${esc(r.start.toISOString().slice(0, 7))} → ${esc(r.end.toISOString().slice(0, 7))}${r.approx ? " (dates of the role)" : ""}" x="${x1}" y="${y + 2}" width="${x2 - x1}" height="${RH - 8}" rx="4" fill="${r.color}" ${r.approx ? 'fill-opacity="0.35"' : ""} />`;
+    }
+  });
+  svg += `</svg>`;
+  view.innerHTML = `<div class="legend"><span><span class="dot" style="background:${COLORS().role}"></span>role</span><span><span class="dot" style="background:${COLORS().project}"></span>project (faded = no own dates)</span><span><span class="dot" style="background:${COLORS().education}"></span>education</span></div>${svg}`;
+  view.querySelectorAll("[data-tip]").forEach((n) => { n.addEventListener("mousemove", (ev) => showTip(ev, esc(n.dataset.tip))); n.addEventListener("mouseleave", hideTip); });
+}
+
+let cyLib = null;
+async function graph() {
+  view.innerHTML = `<div class="toolbar">
+      <label><input type="checkbox" id="g-ev" checked /> evidence</label>
+      <label><input type="checkbox" id="g-sk" checked /> skills</label>
+      <label>min skill uses <select id="g-min"><option>1</option><option selected>2</option><option>3</option><option>5</option></select></label>
+      <label><input type="checkbox" id="g-as" /> links</label>
+      <span class="muted" style="font-size:12px">scroll to zoom · drag to pan · click a node</span></div><div id="cy"></div>`;
+  if (!cyLib) cyLib = (await import("https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/+esm")).default;
+  const draw = () => {
+    const showEv = $("g-ev").checked, showSk = $("g-sk").checked, showAs = $("g-as").checked, minUses = +$("g-min").value;
+    const n = [], e = [], add = (id, label, type, extra = {}) => n.push({ data: { id, label, type, ...extra } });
+    D.companies.forEach((c) => add(c.id, c.name, "company"));
+    D.roles.forEach((r) => { add(r.id, r.title, "role"); if (r.company_id) e.push({ data: { source: r.company_id, target: r.id } }); });
+    D.projects.forEach((p) => { add(p.id, p.name, "project"); const par = p.role_id || p.company_id; if (par) e.push({ data: { source: par, target: p.id } }); });
+    D.education.forEach((ed) => add(ed.id, ed.title, "education"));
+    if (showEv) D.evidence.forEach((x) => {
+      add(x.id, x.statement_en.slice(0, 60) + (x.statement_en.length > 60 ? "…" : ""), "evidence", { inferred: x.certainty === "inferred" ? 1 : 0 });
+      const par = x.project_id || x.role_id || x.education_id; if (par) e.push({ data: { source: par, target: x.id } });
+    });
+    if (showAs) D.assets.forEach((a) => {
+      add(a.id, a.title, "asset"); const par = a.evidence_id || a.project_id || a.role_id || a.company_id || a.education_id;
+      if (par && (showEv || !a.evidence_id)) e.push({ data: { source: par, target: a.id } });
+    });
+    if (showSk) {
+      const uses = {};
+      const links = [...D.ps.map((l) => [l.project_id, l.skill_id]), ...D.eds.map((l) => [l.education_id, l.skill_id]),
+        ...(showEv ? D.es.map((l) => [l.evidence_id, l.skill_id]) : D.es.map((l) => [D.E[l.evidence_id]?.project_id || D.E[l.evidence_id]?.role_id, l.skill_id]))];
+      links.forEach(([, s]) => (uses[s] = (uses[s] || 0) + 1));
+      const keep = new Set(Object.keys(uses).filter((s) => uses[s] >= minUses));
+      keep.forEach((s) => add("s-" + s, D.S[s]?.name ?? "?", "skill", { uses: uses[s], sid: s }));
+      const seen = new Set();
+      links.forEach(([a, s]) => { if (a && keep.has(s) && !seen.has(a + s)) { seen.add(a + s); e.push({ data: { source: a, target: "s-" + s, skill: 1 } }); } });
+    }
+    const ids = new Set(n.map((x) => x.data.id));
+    const C = COLORS();
+    const cy = cyLib({
+      container: $("cy"), elements: [...n, ...e.filter((x) => ids.has(x.data.source) && ids.has(x.data.target))],
+      wheelSensitivity: 0.25,
+      style: [
+        { selector: "node", style: { "background-color": (el) => C[el.data("type")], label: "data(label)", color: css("--fg"), "font-size": 9,
+          "text-valign": "bottom", "text-margin-y": 3, width: 14, height: 14, "text-max-width": 120, "text-wrap": "ellipsis", "min-zoomed-font-size": 7 } },
+        { selector: "node[type='company']", style: { width: 34, height: 34, "font-size": 13, "font-weight": 600 } },
+        { selector: "node[type='role']", style: { width: 26, height: 26, "font-size": 11 } },
+        { selector: "node[type='project']", style: { width: 22, height: 22, "font-size": 10 } },
+        { selector: "node[type='education']", style: { width: 22, height: 22, shape: "diamond" } },
+        { selector: "node[type='skill']", style: { shape: "round-rectangle", width: "mapData(uses, 1, 20, 10, 30)", height: "mapData(uses, 1, 20, 10, 30)", "font-size": 9 } },
+        { selector: "node[type='evidence']", style: { width: 9, height: 9, "font-size": 7 } },
+        { selector: "node[inferred=1]", style: { "border-width": 2, "border-style": "dashed", "border-color": css("--fg"), "background-opacity": 0.4 } },
+        { selector: "node[type='asset']", style: { shape: "triangle", width: 10, height: 10, "font-size": 7 } },
+        { selector: "edge", style: { width: 1, "line-color": css("--line"), "curve-style": "haystack", opacity: 0.8 } },
+        { selector: "edge[skill]", style: { opacity: 0.35 } },
+        { selector: ".faded", style: { opacity: 0.08 } },
+        { selector: "node:selected", style: { "border-width": 3, "border-color": css("--accent") } },
+      ],
+      layout: { name: "cose", animate: false, nodeRepulsion: 9000, idealEdgeLength: 60, numIter: 1500, randomize: true },
+    });
+    cy.on("tap", "node", (ev) => {
+      const d = ev.target.data(); open(d.type, d.type === "skill" ? d.sid : d.id);
+      const nb = ev.target.closedNeighborhood(); cy.elements().addClass("faded"); nb.removeClass("faded");
+    });
+    cy.on("tap", (ev) => { if (ev.target === cy) cy.elements().removeClass("faded"); });
+  };
+  ["g-ev", "g-sk", "g-min", "g-as"].forEach((id) => $(id).addEventListener("change", draw));
+  draw();
+}
+
+function skills() {
+  const counts = {};
+  for (const l of D.es) { const c = (counts[l.skill_id] ??= { ex: 0, inf: 0, proj: new Set() }); l.certainty === "inferred" ? c.inf++ : c.ex++; const p = D.E[l.evidence_id]?.project_id; if (p) c.proj.add(p); }
+  for (const l of D.ps) (counts[l.skill_id] ??= { ex: 0, inf: 0, proj: new Set() }).proj.add(l.project_id);
+  const cats = ["technology", "practice", "capability", "domain", "language", "other"];
+  const max = Math.max(1, ...Object.values(counts).map((c) => c.ex + c.inf));
+  view.innerHTML = `<div class="toolbar"><input type="search" id="sk-q" placeholder="Filter skills…" />
+    <span class="muted" style="font-size:12px">bar = evidence count · <span class="dot" style="background:${COLORS().evidence}"></span>explicit <span class="dot" style="background:${COLORS().evidence};opacity:.35"></span>inferred · number = projects</span></div><div class="pad" id="sk-list"></div>`;
+  const render = () => {
+    const q = $("sk-q").value.toLowerCase();
+    $("sk-list").innerHTML = cats.map((cat) => {
+      const list = D.skills.filter((s) => s.category === cat && (!q || s.name.toLowerCase().includes(q) || s.aliases?.some((a) => a.toLowerCase().includes(q))))
+        .map((s) => ({ s, c: counts[s.id] ?? { ex: 0, inf: 0, proj: new Set() } }))
+        .sort((a, b) => (b.c.ex + b.c.inf) - (a.c.ex + a.c.inf) || b.c.proj.size - a.c.proj.size || a.s.name.localeCompare(b.s.name));
+      if (!list.length) return "";
+      return `<h3 style="font-size:13px;text-transform:capitalize;margin:16px 0 6px">${cat} <span class="muted">(${list.length})</span></h3>` + list.map(({ s, c }) =>
+        `<div class="skillrow" data-open="skill:${s.id}"><span class="nm">${esc(s.name)}</span>
+         <span class="meter"><i style="width:${(c.ex / max) * 100}%;background:${COLORS().evidence}"></i><i style="width:${(c.inf / max) * 100}%;background:${COLORS().evidence};opacity:.35"></i></span>
+         <span class="muted" style="text-align:right">${c.proj.size}</span></div>`).join("");
+    }).join("");
+  };
+  $("sk-q").addEventListener("input", render); render();
+}
+
+async function mcpCall(name, args) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const r = await fetch(MCP_URL, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream",
+    "mcp-protocol-version": "2025-06-18", authorization: "Bearer " + session.access_token },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) });
+  const j = await r.json(); const t = j.result?.content?.[0]?.text;
+  if (!r.ok || !t) throw new Error(j.error?.message || j.error_description || `HTTP ${r.status}`);
+  const out = JSON.parse(t); if (j.result.isError) throw new Error(out.error); return out;
+}
+function search() {
+  view.innerHTML = `<div class="toolbar"><form id="sf" style="display:flex;gap:8px;flex:1;flex-wrap:wrap">
+    <input type="search" id="sq" placeholder="Search in English, e.g. 'designing asynchronous backends' or 'Kafka'" style="flex:1;min-width:220px" />
+    <select id="st"><option value="">all types</option><option>evidence</option><option>project</option><option>role</option><option>education</option><option>asset</option></select>
+    <button class="btn primary">Search</button></form></div>
+    <div class="pad" id="sr"><p class="muted">Same hybrid search the MCP uses: semantic (gte-small) + full-text + exact skill match, fused with RRF. Queries must be in English.</p></div>`;
+  $("sf").addEventListener("submit", async (ev) => {
+    ev.preventDefault(); const q = $("sq").value.trim(); if (!q) return;
+    $("sr").innerHTML = `<p class="muted">Searching…</p>`;
+    try {
+      const res = await mcpCall("search_career", { query_en: q, limit: 20, ...($("st").value ? { entity_types: [$("st").value] } : {}) });
+      $("sr").innerHTML = (res.warning ? `<p class="err">${esc(res.warning)}</p>` : "") + (res.results.length ? res.results.map((r) => {
+        const s = r.signals;
+        return `<div class="card" data-open="${r.entity_type}:${r.id}"><span class="dot" style="background:${COLORS()[r.entity_type]}"></span><b>${esc(r.title)}</b>
+          <span class="tag">${r.entity_type}</span>${r.certainty === "inferred" ? '<span class="tag inf">inferred</span>' : ""}
+          <span class="muted" style="float:right;font-size:12px">score ${r.score}</span>
+          <div class="muted" style="font-size:12px;margin:4px 0">${esc(r.text.slice(0, 260))}</div>
+          <div style="font-size:11px" class="muted">semantic ${s.semantic_similarity ?? "–"} · full-text ${s.fts_rank ?? "–"}${s.matched_skills.length ? " · skills: " + s.matched_skills.map(esc).join(", ") : ""}</div></div>`;
+      }).join("") : `<p class="muted">No matching evidence.</p>`);
+    } catch (e) { $("sr").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  });
+}
+
+// --- Embedding map: UMAP (PCA fallback) of the stored gte-small vectors ---
+let mapCache = null;
+function pca2(X) {
+  const n = X.length, d = X[0].length, mean = new Array(d).fill(0);
+  X.forEach((r) => r.forEach((v, j) => (mean[j] += v / n)));
+  const Z = X.map((r) => r.map((v, j) => v - mean[j]));
+  const comps = [];
+  for (let k = 0; k < 2; k++) {
+    let v = Array.from({ length: d }, () => Math.random() - 0.5);
+    for (let it = 0; it < 60; it++) {
+      const s = Z.map((r) => r.reduce((a, x, j) => a + x * v[j], 0));
+      let w = new Array(d).fill(0); Z.forEach((r, i) => r.forEach((x, j) => (w[j] += x * s[i])));
+      comps.forEach((c) => { const p = w.reduce((a, x, j) => a + x * c[j], 0); w = w.map((x, j) => x - p * c[j]); });
+      const nrm = Math.hypot(...w) || 1; v = w.map((x) => x / nrm);
+    }
+    comps.push(v);
+  }
+  return Z.map((r) => comps.map((c) => r.reduce((a, x, j) => a + x * c[j], 0)));
+}
+async function embeddingMap() {
+  view.innerHTML = `<div class="toolbar"><select id="m-alg"><option value="umap">UMAP</option><option value="pca">PCA</option></select>
+    <label><input type="checkbox" id="m-role" /> roles & companies</label>
+    <button class="btn" id="m-re">Recompute</button>
+    <span class="muted" style="font-size:12px" id="m-info">2D projection of the gte-small vectors: nearby points are semantically similar.</span></div>
+    <div class="legend">${["evidence", "project", "asset", "education", "role", "company"].map((t) => `<span><span class="dot" style="background:${COLORS()[t]}"></span>${t}</span>`).join("")}</div>
+    <div id="m-plot" class="pad"><p class="muted">Loading vectors…</p></div>`;
+  const run = async () => {
+    try {
+      if (!mapCache) {
+        const rows = await all("knowledge_chunks", "id, entity_type, entity_id, title, content, certainty, embedding");
+        mapCache = rows.filter((r) => r.embedding).map((r) => ({ ...r, v: typeof r.embedding === "string" ? JSON.parse(r.embedding) : r.embedding }));
+      }
+      const pts = mapCache.filter((r) => $("m-role").checked || !["role", "company"].includes(r.entity_type));
+      if (pts.length < 3) { $("m-plot").innerHTML = `<p class="muted">Not enough embedded items yet.</p>`; return; }
+      $("m-info").textContent = `Projecting ${pts.length} vectors…`;
+      await new Promise((r) => setTimeout(r, 20));
+      let Y;
+      if ($("m-alg").value === "umap" && pts.length >= 8) {
+        const { UMAP } = await import("https://cdn.jsdelivr.net/npm/umap-js@1.4.0/+esm");
+        Y = new UMAP({ nComponents: 2, nNeighbors: Math.min(15, pts.length - 1), minDist: 0.15, distanceFn: (a, b) => 1 - a.reduce((s, x, i) => s + x * b[i], 0) }).fit(pts.map((p) => p.v));
+      } else Y = pca2(pts.map((p) => p.v));
+      $("m-info").textContent = `${pts.length} items · nearby points are semantically similar · hover for title, click for details`;
+      const W = Math.max($("m-plot").clientWidth - 32, 500), H = Math.max(view.clientHeight - 140, 420), m = 20;
+      const xs = Y.map((p) => p[0]), ys = Y.map((p) => p[1]);
+      const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+      const sx = (v) => m + ((v - x0) / (x1 - x0 || 1)) * (W - 2 * m), sy = (v) => m + ((v - y0) / (y1 - y0 || 1)) * (H - 2 * m);
+      const C = COLORS();
+      const r = { company: 7, role: 6, project: 6, education: 6, asset: 4.5, evidence: 4 };
+      $("m-plot").innerHTML = `<svg width="${W}" height="${H}" style="border:1px solid var(--line);border-radius:8px;background:var(--panel)">` +
+        pts.map((p, i) => `<circle cx="${sx(Y[i][0]).toFixed(1)}" cy="${sy(Y[i][1]).toFixed(1)}" r="${r[p.entity_type]}" fill="${C[p.entity_type]}"
+          ${p.certainty === "inferred" ? 'fill-opacity="0.35" stroke="' + C[p.entity_type] + '" stroke-dasharray="2 2"' : 'fill-opacity="0.85"'}
+          data-open="${p.entity_type}:${p.entity_id}" data-i="${i}" style="cursor:pointer" />`).join("") + `</svg>`;
+      $("m-plot").querySelectorAll("circle").forEach((c) => {
+        const p = pts[+c.dataset.i];
+        c.addEventListener("mousemove", (ev) => showTip(ev, `<b>${esc(p.entity_type)}</b> · ${esc(p.title)}<div class="muted">${esc(p.content.slice(0, 160))}…</div>`));
+        c.addEventListener("mouseleave", hideTip);
+      });
+    } catch (e) { $("m-plot").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  };
+  $("m-re").addEventListener("click", run); $("m-alg").addEventListener("change", run); $("m-role").addEventListener("change", run);
+  run();
+}
+
+const VIEWS = { timeline, graph, skills, search, map: embeddingMap };
+let current = "timeline";
+$("tabs").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button"); if (!b) return;
+  document.querySelectorAll("#tabs button").forEach((x) => x.classList.toggle("on", x === b));
+  current = b.dataset.v; hideTip(); VIEWS[current]();
+});
+
+// ---------------------------------------------------------------------------
+// Auth + boot
+// ---------------------------------------------------------------------------
+async function boot() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) { $("login").classList.remove("hidden"); $("app").classList.add("hidden"); return; }
+  $("login").classList.add("hidden"); $("app").classList.remove("hidden");
+  view.innerHTML = `<p class="pad muted">Loading…</p>`;
+  try { await load(); VIEWS[current](); } catch (e) { view.innerHTML = `<p class="pad err">${esc(e.message)}</p>`; }
+}
+$("loginform").addEventListener("submit", async (ev) => {
+  ev.preventDefault(); $("loginerr").textContent = "";
+  const { error } = await supabase.auth.signInWithPassword({ email: $("email").value, password: $("password").value });
+  if (error) { $("loginerr").textContent = error.message; return; }
+  boot();
+});
+$("signout").addEventListener("click", async () => { await supabase.auth.signOut(); boot(); });
+let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { if (D && current === "timeline") timeline(); }, 200); });
+boot();
+</script>
+</body>
+</html>

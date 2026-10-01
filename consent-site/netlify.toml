@@ -12,3 +12,8 @@
   from = "/oauth-consent"
   to = "/index.html"
   status = 200
+
+[[redirects]]
+  from = "/explorer"
+  to = "/explorer.html"
+  status = 200

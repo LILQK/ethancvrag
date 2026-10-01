@@ -134,6 +134,19 @@ language rules, ingestion / correction / job-matching workflows, examples).
 - Claude Code: `ln -s "$PWD/skills/career-rag" ~/.claude/skills/career-rag`
 - claude.ai / Claude Desktop: upload [`skills/career-rag.zip`](skills/career-rag.zip) in Settings → Capabilities → Skills.
 
+## Explorer (visualization)
+
+`consent-site/explorer.html`, served at `https://<consent-host>/explorer`. Owner login, read-only, same RLS as the MCP
+(it queries Postgres with the user's session and calls the MCP `search_career` tool for search).
+
+- **Timeline**: companies → roles → projects, personal projects and education on a time axis.
+- **Graph**: company → role → project → evidence → skill network (Cytoscape), with filters and neighborhood focus.
+- **Skills**: every skill by category, with explicit vs inferred evidence counts and number of projects.
+- **Search**: the hybrid search with its signals (semantic similarity, full-text rank, matched skills).
+- **Embedding map**: UMAP (or PCA) 2D projection of the stored `gte-small` vectors, computed in the browser.
+
+Clicking any item opens a detail panel with the English text, the original `source_text`, skills and links.
+
 ## Security model
 
 - **OAuth 2.1** with Supabase Auth as authorization server: dynamic client registration, PKCE, refresh tokens.
@@ -164,7 +177,7 @@ supabase/
     index.ts                   routing, OAuth resource metadata, auth, Streamable HTTP transport
     lib.ts                     JWT verification, user-scoped Supabase client, gte-small embeddings
     tools.ts                   MCP tools, validation, draft preparation, matching heuristics
-consent-site/                  static OAuth login + consent page (Netlify)
+consent-site/                  static OAuth login + consent page and /explorer (Netlify)
 skills/career-rag/             agent skill
 ```
 
