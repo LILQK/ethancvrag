@@ -121,6 +121,7 @@ judgment: the client is told to read the evidence and to report gaps honestly.
 | `match_job_requirements` | Evidence per job requirement + coverage signal. |
 | `prepare_changes` | **Step 1** of every write: validates a list of `create / update / delete / unlink_skill` operations on companies, roles, projects, evidence, education, skills and assets (links) (with `ref`s linking new items), checks ids exist, flags duplicates, non-English text and missing provenance, and stores a **pending draft** with a human-readable preview. |
 | `commit_draft` | **Step 2**: `commit` (atomic, all-or-nothing, then re-index) / `discard` / `show`. Clients are instructed to commit only after explicit user confirmation. |
+| `get_document` | A stored document (e.g. `cv_style_reference`): style guide + text inline and a 10-minute signed download URL. |
 | `reindex` | Rebuild chunks from the source-of-truth tables and embed pending ones in batches. |
 
 Tool descriptions and server `instructions` teach clients the rules: search before assuming, never invent ids,
@@ -133,6 +134,13 @@ language rules, ingestion / correction / job-matching workflows, examples).
 
 - Claude Code: `ln -s "$PWD/skills/career-rag" ~/.claude/skills/career-rag`
 - claude.ai / Claude Desktop: upload [`skills/career-rag.zip`](skills/career-rag.zip) in Settings → Capabilities → Skills.
+
+## Documents (CV style reference)
+
+Files such as the CV style reference live in a **private Storage bucket** (`documents/<user_id>/…`, owner-only
+policies) with a row in `documents` holding a `style_guide_md` (layout, typography, colors, section order, writing
+rules) and the extracted `content_text`. The MCP tool `get_document` returns both inline plus a signed download URL
+valid for 10 minutes, so agents can reproduce the style while taking every fact from the evidence.
 
 ## Explorer (visualization)
 

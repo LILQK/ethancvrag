@@ -157,6 +157,18 @@ Minimal example:
    Check "N years of X" against role/project dates yourself.
 4. If the user then remembers relevant experience that wasn't stored, offer to add it (draft → confirm).
 
+## Workflow: writing a CV (or cover letter / one-pager)
+
+1. `get_document(kind:"cv_style_reference")` FIRST. Follow `style_guide_md` exactly (one A4 page, two columns,
+   typography, colors, section order, bullet style). `content_text` is only there to show tone and structure:
+   **never copy facts from it**. To see the original, download `download_url` (signed, about 10 minutes), for
+   example with `curl -L -o reference.pdf '<url>'`. It contains personal data: don't publish it.
+2. Content comes only from the RAG: run `match_job_requirements` against the offer, then `search_career` and
+   `get_entity` for the chosen projects. Use explicit evidence; flag inferred items to the user before using them.
+3. Tailor everything to the offer (headline, profile, role framing, skills heading). Write in the offer's language.
+4. Produce HTML/CSS (or DOCX) and print to PDF on one A4 page. Check that it does not overflow. Name the file
+   `Firstname_Lastname_COMPANY_Role_CV.pdf`.
+
 ## Never
 
 - Invent ids, experience, metrics or dates.

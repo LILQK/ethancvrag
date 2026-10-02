@@ -158,13 +158,50 @@ export function buildServer(db: SupabaseClient) {
       "Returns the full skeleton of the user's career with ids: companies -> roles -> projects (with evidence counts), " +
       "projects outside companies (personal/open source), education, all skills with evidence counts, pending drafts and index stats. " +
       "Call this FIRST in a session, before adding experience (to reuse existing companies/roles/projects ids instead of duplicating them) " +
-      "and whenever you need ids. It does not include evidence text: use search_career or get_entity for details.",
+      "and whenever you need ids. It does not include evidence text: use search_career or get_entity for details. " +
+      "Also lists stored documents (e.g. the CV style reference) that get_document can return.",
     inputSchema: {},
     annotations: { readOnlyHint: true },
   }, wrap(async () => {
     const { data, error } = await db.rpc("profile_overview");
     if (error) throw new Error(error.message);
-    return data;
+    const { data: docs } = await db.from("documents").select("id, kind, title, description_en, mime_type, is_primary");
+    return { ...data, documents: docs ?? [] };
+  }));
+
+  // -------------------------------------------------------------------------
+  server.registerTool("get_document", {
+    title: "Get a stored document (e.g. CV style reference)",
+    description:
+      "Returns a stored document of the user. kind='cv_style_reference' is the CV whose LAYOUT and STYLE must be reproduced " +
+      "whenever you write a CV (also follow it for cover letters/one-pagers unless another reference exists). " +
+      "Returns: style_guide_md (exact page layout, typography, colors, section order, writing rules: follow it), " +
+      "content_text (the reference's text, ONLY to see tone and structure: never copy its facts, all content must come from " +
+      "the Career RAG evidence via search_career/get_entity), and download_url, a signed URL valid for 10 minutes to fetch the " +
+      "original file (e.g. curl -L -o reference.pdf '<url>'; it contains personal data, do not share it).",
+    inputSchema: {
+      kind: z.enum(["cv_style_reference", "cv", "cover_letter_reference", "portfolio", "other"]).optional()
+        .describe("Document kind (default cv_style_reference). Ignored if id is given"),
+      id: UUID.optional().describe("Document id from get_profile_overview.documents"),
+      include_content_text: z.boolean().optional().describe("Include the extracted text of the file (default true)"),
+    },
+    annotations: { readOnlyHint: true },
+  }, wrap(async (a: { kind?: string; id?: string; include_content_text?: boolean }) => {
+    let q = db.from("documents").select("*");
+    q = a.id ? q.eq("id", a.id) : q.eq("kind", a.kind ?? "cv_style_reference").order("is_primary", { ascending: false })
+      .order("updated_at", { ascending: false });
+    const { data, error } = await q.limit(1).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("No such document. Check get_profile_overview.documents; do not guess ids.");
+    const file = data.storage_path.split("/").pop();
+    const { data: signed, error: e2 } = await db.storage.from("documents").createSignedUrl(data.storage_path, 600, { download: file });
+    return {
+      id: data.id, kind: data.kind, title: data.title, description_en: data.description_en, mime_type: data.mime_type,
+      size_bytes: data.size_bytes, file_name: file,
+      download_url: signed?.signedUrl ?? null, download_url_expires_in_s: 600, ...(e2 ? { download_error: e2.message } : {}),
+      style_guide_md: data.style_guide_md,
+      ...(a.include_content_text === false ? {} : { content_text: data.content_text }),
+    };
   }));
 
   // -------------------------------------------------------------------------
