@@ -142,6 +142,33 @@ policies) with a row in `documents` holding a `style_guide_md` (layout, typograp
 rules) and the extracted `content_text`. The MCP tool `get_document` returns both inline plus a signed download URL
 valid for 10 minutes, so agents can reproduce the style while taking every fact from the evidence.
 
+### Uploading a CV style reference
+
+Personal files never go into git (`applications/`, `*.pdf` and `*.docx` are ignored). Upload them to the private bucket
+and register them:
+
+```bash
+# 1. upload the file into your own folder of the private bucket
+supabase storage cp ./my_reference_cv.pdf \
+  "ss:///documents/<your-auth-user-id>/cv_style_reference.pdf" \
+  --content-type application/pdf --linked --experimental
+
+# 2. register it (style_guide_md = how to reproduce the layout; content_text = extracted text)
+supabase db query --linked "
+  update public.documents set is_primary = false
+    where user_id = '<your-auth-user-id>' and kind = 'cv_style_reference';
+  insert into public.documents (user_id, kind, title, description_en, storage_path, mime_type, style_guide_md, content_text)
+  values ('<your-auth-user-id>', 'cv_style_reference', 'CV style reference',
+          'One-page CV used as the visual and structural reference for generated CVs. Do not reuse its content.',
+          '<your-auth-user-id>/cv_style_reference.pdf', 'application/pdf',
+          \$g\$<style guide markdown>\$g\$, \$t\$<extracted text>\$t\$);"
+```
+
+The easiest route is to ask an agent with this repo open: *"upload ~/Downloads/my_cv.pdf as the CV style reference"*.
+It extracts the text, measures fonts, sizes and colors (e.g. with PyMuPDF), writes the style guide and runs both
+steps. The newest `is_primary` row of a kind is the one `get_document` returns. To replace a reference, upload
+over the same path (add `--overwrite` if your CLI version needs it) and update the row.
+
 ## Explorer (visualization)
 
 `consent-site/explorer.html`, served at `https://<consent-host>/explorer`. Owner login, read-only, same RLS as the MCP

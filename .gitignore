@@ -3,3 +3,8 @@ supabase/.temp/
 consent-site/.netlify/
 .claude/
 .DS_Store
+
+# Personal documents (CVs, applications): they live in Supabase Storage, never in git
+applications/
+*.pdf
+*.docx
